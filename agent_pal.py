@@ -1428,7 +1428,9 @@ def filter_whatsapp_process(name, cmdline, cmdline_str):
 
 def filter_teams_process(name, cmdline, cmdline_str):
     if 'teams' in name:
-        return not any('--type=' in arg.lower() for arg in cmdline)
+        # Microsoft Teams has sub-processes with --type= or --process_type=
+        is_sub = any(term in arg.lower() for arg in cmdline for term in ['--type=', '--process_type=', '--service-sandbox-type='])
+        return not is_sub
     return False
 
 # ----------------------------------------------------
