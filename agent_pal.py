@@ -213,6 +213,9 @@ class BaseBuddyWindow:
         
         # Snoring particles for sleeping state
         self.snores = [] # list of dicts: {'x': x, 'y': y, 'char': 'z', 'size': s, 'age': a}
+        self.dust_particles = []
+        self.jetpack_smoke = []
+        self.confetti = []
         
         # Setup Toplevel Window
         self.win = tk.Toplevel(self.root)
@@ -392,6 +395,106 @@ class BaseBuddyWindow:
     def trigger_squash(self, stype, frames=6):
         self.squash_tick = frames
         self.squash_type = stype
+        if stype == "land":
+            self.spawn_dust_cloud(self.width / 2, self.height / 2 + 15)
+
+    def spawn_dust_cloud(self, cx, cy):
+        colors = ["#90A4AE", "#B0BEC5", "#CFD8DC", "#ECEFF1"]
+        for _ in range(8):
+            vx = random.uniform(-2.5, 2.5)
+            vy = random.uniform(-1.2, -0.2)
+            self.dust_particles.append({
+                'x': cx + random.uniform(-8, 8),
+                'y': cy + 10, # feet level
+                'vx': vx,
+                'vy': vy,
+                'size': random.uniform(3, 7),
+                'color': random.choice(colors),
+                'age': 0,
+                'max_age': random.randint(12, 20)
+            })
+
+    def spawn_jetpack_trail(self, cx, cy, sx, sy):
+        colors = ["#FF5722", "#FF9800", "#FFC107", "#CFD8DC", "#ECEFF1"]
+        for offset in [-10 * sx, 10 * sx]:
+            self.jetpack_smoke.append({
+                'x': cx + offset + random.uniform(-2, 2),
+                'y': cy + 16 * sy,
+                'vx': random.uniform(-0.8, 0.8) - (0.3 * self.vx if hasattr(self, 'vx') else 0),
+                'vy': random.uniform(1.5, 3.5),
+                'size': random.uniform(3, 6),
+                'color': random.choice(colors),
+                'age': 0,
+                'max_age': random.randint(10, 18)
+            })
+
+    def spawn_confetti(self):
+        colors = ["#E91E63", "#9C27B0", "#2196F3", "#4CAF50", "#FFEB3B", "#FF9800", "#00BCD4"]
+        self.confetti.append({
+            'x': random.uniform(10, self.width - 10),
+            'y': 0,
+            'vx': random.uniform(-1.0, 1.0),
+            'vy': random.uniform(1.2, 2.8),
+            'size': random.uniform(2, 5),
+            'color': random.choice(colors),
+            'age': 0,
+            'max_age': random.randint(35, 55)
+        })
+
+    def draw_and_update_custom_particles(self):
+        # 1. Dust Particles
+        alive_dust = []
+        for p in self.dust_particles:
+            p['age'] += 1
+            p['x'] += p['vx']
+            p['y'] += p['vy']
+            p['vy'] += 0.05 # minor gravity
+            
+            alpha = max(0, 100 - int((p['age'] / p['max_age']) * 100))
+            if alpha > 0 and p['age'] < p['max_age']:
+                r = p['size'] * (alpha / 100.0)
+                if r > 0.5:
+                    self.canvas.create_oval(
+                        p['x'] - r, p['y'] - r, p['x'] + r, p['y'] + r,
+                        fill=p['color'], outline=""
+                    )
+                    alive_dust.append(p)
+        self.dust_particles = alive_dust
+
+        # 2. Confetti
+        alive_confetti = []
+        for p in self.confetti:
+            p['age'] += 1
+            p['x'] += p['vx'] + math.sin(p['age'] * 0.15) * 1.2
+            p['y'] += p['vy']
+            
+            alpha = max(0, 100 - int((p['age'] / p['max_age']) * 100))
+            if alpha > 0 and p['age'] < p['max_age'] and p['y'] < self.height:
+                r = p['size']
+                self.canvas.create_rectangle(
+                    p['x'] - r, p['y'] - r, p['x'] + r, p['y'] + r,
+                    fill=p['color'], outline=""
+                )
+                alive_confetti.append(p)
+        self.confetti = alive_confetti
+
+        # 3. Jetpack Smoke
+        alive_smoke = []
+        for p in self.jetpack_smoke:
+            p['age'] += 1
+            p['x'] += p['vx'] + math.sin(p['age'] * 0.2) * 0.5
+            p['y'] += p['vy']
+            
+            alpha = max(0, 100 - int((p['age'] / p['max_age']) * 100))
+            if alpha > 0 and p['age'] < p['max_age']:
+                r = p['size'] * (alpha / 100.0)
+                if r > 0.5:
+                    self.canvas.create_oval(
+                        p['x'] - r, p['y'] - r, p['x'] + r, p['y'] + r,
+                        fill=p['color'], outline=""
+                    )
+                    alive_smoke.append(p)
+        self.jetpack_smoke = alive_smoke
         
     def draw_success_bubble(self, t):
         """Draw a floating green checkmark bubble above the head."""
@@ -682,9 +785,15 @@ class BaseBuddyWindow:
             
         if hasattr(self, 'success_timer') and self.success_timer > 0:
             self.draw_success_bubble(self.tick)
+            # Spawn confetti!
+            if self.tick % 3 == 0:
+                self.spawn_confetti()
         elif self.alert_active:
             self.draw_alert_bubble(self.tick)
             
+        # Draw premium custom particles
+        self.draw_and_update_custom_particles()
+        
         self.tick += 1
         
     def draw_antigravity_skin(self, cx, cy, sx, sy):
@@ -697,6 +806,10 @@ class BaseBuddyWindow:
             self.canvas.create_oval(cx + 5 * sx, cy + 16 * sy, cx + 15 * sx, cy + (16 + flame_len) * sy, fill="#FF5722", outline="")
             self.canvas.create_oval(cx - 12 * sx, cy + 16 * sy, cx - 8 * sx, cy + (16 + flame_len * 0.6) * sy, fill="#FFC107", outline="")
             self.canvas.create_oval(cx + 8 * sx, cy + 16 * sy, cx + 12 * sx, cy + (16 + flame_len * 0.6) * sy, fill="#FFC107", outline="")
+            
+            # Spawn premium jetpack trail particles
+            if t % 2 == 0:
+                self.spawn_jetpack_trail(cx, cy, sx, sy)
             
         # 2. Main suit body (Deep blue sphere)
         self.canvas.create_oval(cx - 20 * sx, cy - 20 * sy, cx + 20 * sx, cy + 20 * sy, fill="#1976D2", outline="#0D47A1", width=2)
