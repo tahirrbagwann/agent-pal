@@ -53,16 +53,41 @@ def force_foreground_focus(hwnd):
         print(f"Error forcing window focus: {e}")
 
 class CodeBug:
-    def __init__(self, root, floor_y, screen_width):
+    def __init__(self, root, monitor_rect, buddy_floor_y):
         self.root = root
         self.width = 30
         self.height = 30
-        self.floor_y = floor_y + BUDDY_HEIGHT - self.height  # Align to buddy's bottom/taskbar
-        self.screen_width = screen_width
+        left, top, right, bottom = monitor_rect
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
         
-        self.x = random.randint(100, screen_width - 100)
-        self.y = self.floor_y
-        self.vx = random.choice([-2.0, 2.0])
+        # Align bug's bottom to buddy's bottom/taskbar
+        self.floor_y = buddy_floor_y + BUDDY_HEIGHT - self.height
+        
+        # Physics / Falling
+        self.vy = 0.0
+        
+        # Select random edge: 0 = Left, 1 = Right, 2 = Top, 3 = Bottom
+        edge = random.randint(0, 3)
+        if edge == 0:  # Left Wall
+            self.x = left
+            self.y = self.floor_y
+            self.vx = 2.0  # Move right
+        elif edge == 1:  # Right Wall
+            self.x = right - self.width
+            self.y = self.floor_y
+            self.vx = -2.0  # Move left
+        elif edge == 2:  # Top Edge (Falls down)
+            self.x = random.randint(left + 50, right - 50)
+            self.y = top
+            self.vx = random.choice([-1.5, 1.5])
+        else:  # Bottom Edge (Floor)
+            self.x = random.randint(left + 50, right - 50)
+            self.y = self.floor_y
+            self.vx = random.choice([-2.0, 2.0])
+            
         self.direction = 1 if self.vx > 0 else -1
         self.tick = 0
         
@@ -82,20 +107,29 @@ class CodeBug:
         self.win.geometry(f"{self.width}x{self.height}+{int(self.x)}+{int(self.y)}")
         
     def update(self):
-        self.x += self.vx
+        # Apply gravity if above floor level
+        if self.y < self.floor_y:
+            self.vy += 0.8  # Gravity matching buddy
+            self.y += self.vy
+            self.x += self.vx
+        else:
+            self.vy = 0
+            self.y = self.floor_y
+            self.x += self.vx
+            
         self.tick += 1
         
         # Crawl bounds
-        if self.x <= 0:
-            self.x = 0
+        if self.x <= self.left:
+            self.x = self.left
             self.vx = -self.vx
             self.direction = 1
-        elif self.x >= self.screen_width - self.width:
-            self.x = self.screen_width - self.width
+        elif self.x >= self.right - self.width:
+            self.x = self.right - self.width
             self.vx = -self.vx
             self.direction = -1
             
-        if random.random() < 0.02:
+        if self.y == self.floor_y and random.random() < 0.02:
             self.vx = -self.vx
             self.direction = 1 if self.vx > 0 else -1
             
@@ -1052,9 +1086,25 @@ class AgentCoordinator:
         
     def spawn_bug(self):
         floor_y = self.floor_y
+        left, top, right, bottom = (0, 0, self.screen_width, self.screen_height)
+        
+        # If there are active agents, spawn on their active monitor
         if self.active_agents:
-            floor_y = list(self.active_agents.values())[0].floor_y
-        bug = CodeBug(self.root, floor_y, self.screen_width)
+            active_buddy = list(self.active_agents.values())[0]
+            floor_y = active_buddy.floor_y
+            left, top, right, bottom = active_buddy.get_current_monitor_rect()
+        else:
+            # Fallback to primary monitor work area
+            try:
+                import win32api
+                monitors = win32api.EnumDisplayMonitors()
+                if monitors:
+                    info = win32api.GetMonitorInfo(monitors[0][0])
+                    left, top, right, bottom = info['Work']
+            except Exception:
+                pass
+                
+        bug = CodeBug(self.root, (left, top, right, bottom), floor_y)
         self.bugs.append(bug)
         print("Spawned a new Code Bug!")
         
