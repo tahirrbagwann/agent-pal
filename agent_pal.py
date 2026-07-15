@@ -499,6 +499,10 @@ class BaseBuddyWindow:
                     self.trigger_squash("land", 12)
                     self.update_geometry()
                     return
+        elif self.state == "chasing":
+            # Bug was squashed by another buddy or disappeared, return to idle
+            self.state = "idle"
+            self.vx = random.choice([-1.5, 1.5])
                     
         # Apply velocity
         self.x += self.vx
@@ -634,8 +638,8 @@ class BaseBuddyWindow:
         else:
             self.draw_generic_skin(cx, cy, scale_x, scale_y)
             
-        # Draw coding/research accessories
-        if self.activity_state:
+        # Draw coding/research accessories (only if not chasing or celebrating)
+        if self.activity_state and self.state not in ["chasing", "happy"]:
             self.draw_busy_accessories(cx, cy)
             
         # Render overlays
