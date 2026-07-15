@@ -57,7 +57,7 @@ class CodeBug:
         self.root = root
         self.width = 30
         self.height = 30
-        self.floor_y = floor_y + 60  # Align to taskbar
+        self.floor_y = floor_y + BUDDY_HEIGHT - self.height  # Align to buddy's bottom/taskbar
         self.screen_width = screen_width
         
         self.x = random.randint(100, screen_width - 100)
@@ -133,17 +133,21 @@ class BaseBuddyWindow:
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
         
-        # Taskbar/Floor level (estimate 60px height) using primary monitor rect
+        # Taskbar/Floor level using primary monitor work area rect
         left, top, right, bottom = (0, 0, self.screen_width, self.screen_height)
         try:
             import win32api
             monitors = win32api.EnumDisplayMonitors()
             if monitors:
-                left, top, right, bottom = monitors[0][2]
+                try:
+                    info = win32api.GetMonitorInfo(monitors[0][0])
+                    left, top, right, bottom = info['Work']
+                except Exception:
+                    left, top, right, bottom = monitors[0][2]
         except Exception:
             pass
             
-        self.floor_y = bottom - self.height - 60
+        self.floor_y = bottom - self.height
         self.x = random.randint(left + 100, right - 200)
         self.y = self.floor_y
         self.vx = random.choice([-2.0, -1.5, 1.5, 2.0])
@@ -246,7 +250,7 @@ class BaseBuddyWindow:
             self.update_geometry()
             
     def get_current_monitor_rect(self):
-        """Detect which monitor the buddy window is currently on."""
+        """Detect which monitor the buddy window is currently on and return its work area."""
         try:
             import win32api
             monitors = win32api.EnumDisplayMonitors()
@@ -257,7 +261,11 @@ class BaseBuddyWindow:
             for handle, device, rect in monitors:
                 left, top, right, bottom = rect
                 if left <= cx <= right and top <= cy <= bottom:
-                    return rect
+                    try:
+                        info = win32api.GetMonitorInfo(handle)
+                        return info['Work']
+                    except Exception:
+                        return rect
                     
             # Fallback: Find closest monitor
             closest_rect = None
@@ -269,7 +277,11 @@ class BaseBuddyWindow:
                 dist = (cx - mid_x)**2 + (cy - mid_y)**2
                 if dist < min_dist:
                     min_dist = dist
-                    closest_rect = rect
+                    try:
+                        info = win32api.GetMonitorInfo(handle)
+                        closest_rect = info['Work']
+                    except Exception:
+                        closest_rect = rect
             if closest_rect:
                 return closest_rect
         except Exception:
@@ -277,13 +289,13 @@ class BaseBuddyWindow:
         return (0, 0, self.screen_width, self.screen_height)
 
     def get_monitor_rect_from_window(self, hwnd):
-        """Query which monitor a specific window handle resides on."""
+        """Query which monitor a specific window handle resides on and return its work area."""
         try:
             import win32api
             import win32con
             monitor_handle = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
             monitor_info = win32api.GetMonitorInfo(monitor_handle)
-            return monitor_info['Monitor'] # (left, top, right, bottom)
+            return monitor_info['Work'] # (left, top, right, bottom)
         except Exception:
             return None
             
@@ -401,7 +413,7 @@ class BaseBuddyWindow:
             
         # Resolve active monitor boundaries dynamically
         left, top, right, bottom = self.get_current_monitor_rect()
-        self.floor_y = bottom - self.height - 60
+        self.floor_y = bottom - self.height
         
         # Happy squashed celebration state
         if self.state == "happy":
@@ -773,7 +785,7 @@ class AgentBuddy(BaseBuddyWindow):
             rect = self.get_monitor_rect_from_window(self.agent_window_hwnd)
             if rect:
                 left, top, right, bottom = rect
-                self.floor_y = bottom - self.height - 60
+                self.floor_y = bottom - self.height
                 self.x = random.randint(left + 100, right - 200)
                 self.y = self.floor_y
                 self.update_geometry()
@@ -1001,7 +1013,21 @@ class AgentCoordinator:
         # Dimensions
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
-        self.floor_y = self.screen_height - 100 - 60
+        
+        # Get primary monitor work area for default floor_y
+        left, top, right, bottom = (0, 0, self.screen_width, self.screen_height)
+        try:
+            import win32api
+            monitors = win32api.EnumDisplayMonitors()
+            if monitors:
+                try:
+                    info = win32api.GetMonitorInfo(monitors[0][0])
+                    left, top, right, bottom = info['Work']
+                except Exception:
+                    left, top, right, bottom = monitors[0][2]
+        except Exception:
+            pass
+        self.floor_y = bottom - 100 # Default buddy height is 100
         
         # Track spawned buddies: {pid: AgentBuddyInstance}
         self.active_agents = {}
@@ -1024,7 +1050,7 @@ class AgentCoordinator:
         floor_y = self.floor_y
         if self.active_agents:
             floor_y = list(self.active_agents.values())[0].floor_y
-        bug = CodeBug(self.root, floor_y - 60, self.screen_width)
+        bug = CodeBug(self.root, floor_y, self.screen_width)
         self.bugs.append(bug)
         print("Spawned a new Code Bug!")
         
