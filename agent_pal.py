@@ -486,7 +486,7 @@ class BaseBuddyWindow:
                 self.vx = self.direction * 3.5
                 
                 # Hop & squash if directly on it
-                if abs(self.x - closest_bug.x) < 20 and abs(self.y - closest_bug.y) < 25:
+                if abs(self.x - closest_bug.x) < 20 and abs((self.y + self.height) - (closest_bug.y + closest_bug.height)) < 25:
                     self.vx = 0
                     self.vy = -6.0
                     self.state = "falling"
